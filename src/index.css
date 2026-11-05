@@ -1,0 +1,46 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-cream font-sans text-ink antialiased;
+  overflow: hidden;
+  background-image:
+    radial-gradient(ellipse at 40% 45%, rgba(255, 252, 245, 0.75), rgba(255, 252, 245, 0) 60%),
+    linear-gradient(rgba(70, 55, 30, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(70, 55, 30, 0.045) 1px, transparent 1px);
+  background-size: 100% 100%, 32px 32px, 32px 32px;
+}
+
+@layer components {
+  .panel {
+    @apply rounded-2xl border border-line/70 bg-paper shadow-soft;
+  }
+  .hazard {
+    display: inline-block;
+    height: 7px;
+    width: 30px;
+    transform: skewX(-20deg);
+    background: repeating-linear-gradient(90deg, currentColor 0 3px, transparent 3px 7px);
+  }
+  .label-caps {
+    @apply font-display font-semibold uppercase tracking-[0.12em];
+  }
+}
+
+.thin-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+.thin-scroll::-webkit-scrollbar-thumb {
+  background: #d8cfbf;
+  border-radius: 8px;
+}
+.thin-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
