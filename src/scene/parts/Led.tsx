@@ -25,7 +25,7 @@ const LR = 0.15; // lens radius
 /**
  * 5 mm LED. `blink` gives the on/off pattern; when it's off the LED stays lit.
  */
-export function Led({ part, blink }: { part: Part; blink?: { freq: number; duty: number } }) {
+export function Led({ part, blink, brightness = 1 }: { part: Part; blink?: { freq: number; duty: number }; brightness?: number }) {
   const colors = LED_COLORS[part.color ?? 'red'];
   const bodyMat = useRef<THREE.MeshPhysicalMaterial>(null);
   const domeMat = useRef<THREE.MeshPhysicalMaterial>(null);
@@ -46,7 +46,7 @@ export function Led({ part, blink }: { part: Part; blink?: { freq: number; duty:
     if (part.reversed) on = 0;
     // Ease towards the target so the LED fades a little like a real one.
     level.current += (on - level.current) * Math.min(1, dt * 22);
-    const l = level.current;
+    const l = level.current * brightness;
     for (const m of [bodyMat.current, domeMat.current]) {
       if (!m) continue;
       m.emissive.copy(glowColor);

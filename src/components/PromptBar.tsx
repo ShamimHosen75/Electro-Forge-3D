@@ -1,4 +1,4 @@
-import { ArrowUp, ChevronDown, Sparkles } from 'lucide-react';
+import { ArrowUp, ChevronDown, Loader2, Sparkles } from 'lucide-react';
 import { useState } from 'react';
 import { useForge } from '../store/useForge';
 
@@ -6,13 +6,16 @@ export const SUGGESTIONS = ['Add a power LED', 'Double the blink rate', 'Add a r
 
 export function PromptBar() {
   const [text, setText] = useState('');
-  const showToast = useForge((s) => s.showToast);
-  const ready = text.trim().length > 0;
+  const run = useForge((s) => s.submit);
+  const thinking = useForge((s) => s.thinking);
+  const ready = text.trim().length > 0 && !thinking;
 
-  const submit = (value: string) => {
-    if (!value.trim()) return;
-    showToast(`Forge AI is warming up — commands arrive in the next build.`);
+  const submit = async (value: string) => {
+    if (!value.trim() || thinking) return;
     setText('');
+    const ok = await run(value);
+    // Give the text back if nothing happened, so it can be fixed and resent.
+    if (!ok) setText(value);
   };
 
   return (
@@ -41,9 +44,11 @@ export function PromptBar() {
         </span>
         <input
           value={text}
+          disabled={thinking}
+          aria-label="Ask AI to modify your circuit"
           onChange={(e) => setText(e.target.value)}
           className="min-w-0 flex-1 bg-transparent px-1 text-[21px] text-ink placeholder:text-muted/80 focus:outline-none"
-          placeholder="Ask AI to modify your circuit — e.g. “make it blink twice as fast”"
+          placeholder={thinking ? 'Forge AI is rewiring your board…' : 'Ask AI to modify your circuit — e.g. “make it blink twice as fast”'}
         />
         <button
           type="button"
@@ -56,10 +61,10 @@ export function PromptBar() {
           aria-label="Send"
           disabled={!ready}
           className={`grid h-[50px] w-[50px] shrink-0 place-items-center rounded-xl bg-forge text-white transition ${
-            ready ? 'opacity-100 shadow-[0_6px_16px_-6px_rgba(200,55,45,.7)] hover:brightness-110' : 'opacity-55'
+            ready || thinking ? 'opacity-100 shadow-[0_6px_16px_-6px_rgba(200,55,45,.7)] hover:brightness-110' : 'opacity-55'
           }`}
         >
-          <ArrowUp className="h-5 w-5" strokeWidth={2.2} />
+          {thinking ? <Loader2 className="h-5 w-5 animate-spin" /> : <ArrowUp className="h-5 w-5" strokeWidth={2.2} />}
         </button>
       </form>
     </div>

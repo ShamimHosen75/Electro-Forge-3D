@@ -11,15 +11,18 @@ import { Electrolytic } from './parts/Electrolytic';
 import { Ceramic } from './parts/Ceramic';
 import { Chip555 } from './parts/Chip555';
 import { WireJumper } from './parts/WireJumper';
+import { Animated } from './Animated';
 import { Button } from './parts/Button';
 
-function PartView({ part, blink }: { part: Part; blink: { freq: number; duty: number } }) {
+type Blink = { freq: number; duty: number; brightness: number };
+
+function PartView({ part, blink }: { part: Part; blink: Blink }) {
   switch (part.kind) {
     case 'resistor':
       return <Resistor part={part} />;
     case 'led':
       // Only the timer output LED blinks; any other LED is steady.
-      return <Led part={part} blink={part.id === 'D1' ? blink : undefined} />;
+      return <Led part={part} blink={part.id === 'D1' ? blink : undefined} brightness={part.id === 'D1' ? blink.brightness : 1} />;
     case 'electrolytic':
       return <Electrolytic part={part} />;
     case 'ceramic':
@@ -33,13 +36,22 @@ function PartView({ part, blink }: { part: Part; blink: { freq: number; duty: nu
 
 function Circuit3D() {
   const circuit = useForge((s) => s.circuit);
+  const anims = useForge((s) => s.anims);
   const { freq, duty } = blinkStats(circuit);
-  const blink = { freq: circuit.mode === 'astable' ? freq : 0, duty };
+  // A bigger LED resistor means less current and a dimmer LED.
+  const r3 = circuit.parts.find((p) => p.id === 'R3')?.value ?? 220;
+  const brightness = Math.min(1.3, Math.max(0.3, Math.sqrt(220 / r3)));
+  const blink = { freq: circuit.mode === 'astable' ? freq : 0, duty, brightness };
+  const render = (p: Part) => <PartView part={p} blink={blink} />;
+  const removed = anims.filter((a) => a.kind === 'remove' && a.ghost && !circuit.parts.some((p) => p.id === a.partId));
   return (
     <group>
       <Breadboard />
       {circuit.parts.map((p) => (
-        <PartView key={p.id} part={p} blink={blink} />
+        <Animated key={p.id} part={p} anim={anims.find((a) => a.partId === p.id)} render={render} />
+      ))}
+      {removed.map((a) => (
+        <Animated key={`gone-${a.partId}-${a.start}`} part={a.ghost!} anim={a} render={render} />
       ))}
       {circuit.wires.map((w) => (
         <WireJumper key={w.id} wire={w} />
