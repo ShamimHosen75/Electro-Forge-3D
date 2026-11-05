@@ -26,6 +26,9 @@ src/
   store/       app state (circuit, history, panel tab, camera commands)
   scene/       3D: breadboard, camera rig, one component per part type
   components/  UI: header, project badge, view toolbar, prompt bar, side panel
+  pages/       Lessons, Lab and Components pages (hash routes #/lessons, #/lab, #/components)
+  content/     lesson and parts-library data
+  ai/          Ollama client for the local-model option
 ```
 
 ## Roadmap
@@ -34,7 +37,7 @@ src/
 2. **Command engine + pick-and-place animations** (done): move, flip, swap, recolor, blink rate, remove
 3. **Suggestion chips, buttons, netlist, undo** (done): power LED, reset button, monostable mode, clickable 3D buttons, Circuit tab with parts and netlist, search, notifications, Ctrl/Cmd+Z
 4. **Forge AI picker** (done): built-in parser or a local LLM through Ollama
-5. Lessons, Lab and Components pages
+5. **Lessons, Lab and Components pages** (done): lessons that end on the board, calculators (555 designer, LED resistor, colour code), parts library
 
 ## Things you can type
 

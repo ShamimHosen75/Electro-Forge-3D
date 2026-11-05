@@ -26,6 +26,13 @@ function saveAi(v: { engine: Engine; ollama: OllamaSettings }) {
 
 export type ViewCommand = 'zoomIn' | 'zoomOut' | 'fit' | 'iso' | 'top' | 'reset';
 export type PanelTab = 'history' | 'circuit';
+export type Page = 'dashboard' | 'lessons' | 'lab' | 'components';
+export const PAGES: Page[] = ['dashboard', 'lessons', 'lab', 'components'];
+
+const pageFromHash = (): Page => {
+  const h = (typeof location !== 'undefined' ? location.hash : '').replace(/^#\/?/, '') as Page;
+  return PAGES.includes(h) ? h : 'dashboard';
+};
 
 export interface ActiveAnim extends AnimSpec {
   start: number;
@@ -55,6 +62,10 @@ interface ForgeState {
   pressed: Record<string, boolean>;
   /** Monostable output stays high until this time (performance.now seconds). */
   pulseUntil: number;
+  page: Page;
+  goto: (p: Page) => void;
+  /** Go to the dashboard and run prompts one after another. */
+  runOnBoard: (prompts: string[]) => Promise<void>;
   engine: Engine;
   ollama: OllamaSettings;
   setAi: (engine: Engine, ollama?: OllamaSettings) => void;
@@ -105,6 +116,19 @@ export const useForge = create<ForgeState>((set, get) => {
   past: [],
   pressed: {},
   pulseUntil: 0,
+  page: pageFromHash(),
+  goto: (page) => {
+    if (location.hash !== `#/${page}`) location.hash = `/${page}`;
+    set({ page });
+  },
+  runOnBoard: async (prompts) => {
+    get().goto('dashboard');
+    await wait(500); // let the 3D view mount first
+    for (const p of prompts) {
+      await get().submit(p);
+      await wait(900);
+    }
+  },
   ...loadAi(),
   setAi: (engine, ollama) => {
     const next = { engine, ollama: ollama ?? get().ollama };

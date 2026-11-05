@@ -1,6 +1,6 @@
 import { Bell, CornerDownLeft, History, Search, Zap } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useForge } from '../store/useForge';
+import { PAGES, useForge } from '../store/useForge';
 import { formatValue } from '../circuit/values';
 import { PartIcon } from './PartIcon';
 import { SUGGESTIONS } from './PromptBar';
@@ -32,7 +32,8 @@ function SearchBox() {
   const history = useForge((s) => s.history);
   const highlight = useForge((s) => s.highlight);
   const setTab = useForge((s) => s.setTab);
-  const submit = useForge((s) => s.submit);
+  const runOnBoard = useForge((s) => s.runOnBoard);
+  const goto = useForge((s) => s.goto);
   const ref = useClickAway(() => setOpen(false));
 
   const results = useMemo(() => {
@@ -76,8 +77,9 @@ function SearchBox() {
             <Row
               key={p.id}
               onClick={() => {
-                highlight(p.id);
+                goto('dashboard');
                 setTab('circuit');
+                setTimeout(() => highlight(p.id), 300);
                 close();
               }}
               icon={<PartIcon icon={p.kind} />}
@@ -90,6 +92,7 @@ function SearchBox() {
             <Row
               key={h.id}
               onClick={() => {
+                goto('dashboard');
                 setTab('history');
                 close();
               }}
@@ -103,7 +106,7 @@ function SearchBox() {
             <Row
               key={s}
               onClick={() => {
-                submit(s);
+                runOnBoard([s]);
                 close();
               }}
               icon={<CornerDownLeft className="h-3.5 w-3.5" />}
@@ -173,9 +176,10 @@ function Notifications() {
 }
 
 export function Header() {
+  const page = useForge((s) => s.page);
   return (
     <header className="panel absolute left-5 right-5 top-5 z-20 flex h-[86px] items-center gap-8 px-7">
-      <a href="#" className="flex shrink-0 items-center gap-4">
+      <a href="#/dashboard" className="flex shrink-0 items-center gap-4">
         <span className="grid h-[52px] w-[52px] place-items-center rounded-xl border border-line bg-card shadow-[inset_0_1px_0_#fff]">
           <Zap className="h-6 w-6 text-forge" strokeWidth={1.8} />
         </span>
@@ -197,13 +201,18 @@ export function Header() {
         {NAV.map((n, i) => (
           <a
             key={n}
-            href="#"
+            href={`#/${PAGES[i]}`}
+            aria-current={page === PAGES[i] ? 'page' : undefined}
             className={`relative py-2 font-display text-[17px] font-semibold uppercase tracking-[0.08em] transition-colors ${
-              i === 0 ? 'text-forge' : 'text-ink/75 hover:text-ink'
+              page === PAGES[i] ? 'text-forge' : 'text-ink/75 hover:text-ink'
             }`}
           >
             {n}
-            {i === 0 && <span className="absolute -bottom-1 left-0 right-0 h-[3px] rounded-full bg-forge" />}
+            <span
+              className={`absolute -bottom-1 left-0 right-0 h-[3px] origin-left rounded-full bg-forge transition-transform duration-300 ${
+                page === PAGES[i] ? 'scale-x-100' : 'scale-x-0'
+              }`}
+            />
           </a>
         ))}
         <Notifications />
