@@ -2,6 +2,27 @@ import { create } from 'zustand';
 import { initialCircuit, initialHistory } from '../circuit/initial';
 import { runCommand, type AnimSpec } from '../circuit/commands';
 import type { Circuit, HistoryEntry } from '../circuit/types';
+import { DEFAULT_OLLAMA, translate, type OllamaSettings } from '../ai/ollama';
+
+export type Engine = 'builtin' | 'ollama';
+
+const SETTINGS_KEY = 'ef.ai';
+function loadAi(): { engine: Engine; ollama: OllamaSettings } {
+  try {
+    const raw = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? 'null');
+    if (raw?.engine && raw?.ollama?.url) return raw;
+  } catch {
+    /* storage blocked or empty */
+  }
+  return { engine: 'builtin', ollama: DEFAULT_OLLAMA };
+}
+function saveAi(v: { engine: Engine; ollama: OllamaSettings }) {
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(v));
+  } catch {
+    /* ignore */
+  }
+}
 
 export type ViewCommand = 'zoomIn' | 'zoomOut' | 'fit' | 'iso' | 'top' | 'reset';
 export type PanelTab = 'history' | 'circuit';
@@ -34,6 +55,9 @@ interface ForgeState {
   pressed: Record<string, boolean>;
   /** Monostable output stays high until this time (performance.now seconds). */
   pulseUntil: number;
+  engine: Engine;
+  ollama: OllamaSettings;
+  setAi: (engine: Engine, ollama?: OllamaSettings) => void;
   highlight: (partId: string) => void;
   press: (partId: string, down: boolean) => void;
   undo: () => void;
@@ -47,7 +71,30 @@ interface ForgeState {
 let seq = 100;
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-export const useForge = create<ForgeState>((set, get) => ({
+export const useForge = create<ForgeState>((set, get) => {
+  /** Runs one parser command against the board. Returns false (with a toast) if it didn't apply. */
+  const apply = (text: string): boolean => {
+    const result = runCommand(text, get().circuit);
+    if (!result.ok) {
+      get().showToast(result.message, 'error');
+      return false;
+    }
+    const now = performance.now() / 1000;
+    const entry: HistoryEntry = { ...result.entry, id: `h${++seq}`, at: Date.now() };
+    set((s) => ({
+      past: [...s.past.slice(-30), { circuit: s.circuit, history: s.history }],
+      circuit: result.circuit,
+      history: [entry, ...s.history],
+      tab: 'history',
+      anims: [
+        ...s.anims.filter((a) => !result.anims.some((n) => n.partId === a.partId)),
+        ...result.anims.map((a) => ({ ...a, start: now, duration: DURATION[a.kind] })),
+      ],
+    }));
+    return true;
+  };
+
+  return {
   circuit: initialCircuit,
   history: initialHistory(),
   tab: 'history',
@@ -58,6 +105,12 @@ export const useForge = create<ForgeState>((set, get) => ({
   past: [],
   pressed: {},
   pulseUntil: 0,
+  ...loadAi(),
+  setAi: (engine, ollama) => {
+    const next = { engine, ollama: ollama ?? get().ollama };
+    saveAi(next);
+    set(next);
+  },
   setTab: (tab) => set({ tab }),
   sendView: (cmd) => set({ view: { cmd, nonce: Date.now() + Math.random() } }),
   showToast: (text, tone = 'info') => set({ toast: { text, tone, nonce: Date.now() } }),
@@ -69,28 +122,45 @@ export const useForge = create<ForgeState>((set, get) => ({
       return true;
     }
     set({ thinking: true });
-    // A short beat so the change reads as "the AI worked on it" rather than a snap.
-    await wait(650);
-    const result = runCommand(text, get().circuit);
-    if (!result.ok) {
+    try {
+      if (get().engine === 'ollama') {
+        let commands: string[] | null = null;
+        let reply = '';
+        try {
+          const ctl = new AbortController();
+          const timer = setTimeout(() => ctl.abort(), 45_000);
+          const t = await translate(text, get().circuit, get().ollama, ctl.signal);
+          clearTimeout(timer);
+          commands = t.commands;
+          reply = t.reply;
+        } catch (e) {
+          get().showToast(`Couldn't reach the local model (${(e as Error).message}). Used the built-in parser instead.`, 'error');
+        }
+        if (commands) {
+          if (!commands.length) {
+            get().showToast(reply || 'The model had no change to make for that.', 'error');
+            return false;
+          }
+          let any = false;
+          for (let i = 0; i < commands.length; i++) {
+            if (i > 0) await wait(1300); // let the previous animation play
+            const c = commands[i];
+            if (/^\s*undo\b/i.test(c)) {
+              get().undo();
+              any = true;
+            } else any = apply(c) || any;
+          }
+          if (any && reply) get().showToast(reply);
+          return any;
+        }
+      } else {
+        // A short beat so the change reads as "the AI worked on it" rather than a snap.
+        await wait(650);
+      }
+      return apply(text);
+    } finally {
       set({ thinking: false });
-      get().showToast(result.message, 'error');
-      return false;
     }
-    const now = performance.now() / 1000;
-    const entry: HistoryEntry = { ...result.entry, id: `h${++seq}`, at: Date.now() };
-    set((s) => ({
-      thinking: false,
-      past: [...s.past.slice(-30), { circuit: s.circuit, history: s.history }],
-      circuit: result.circuit,
-      history: [entry, ...s.history],
-      tab: 'history',
-      anims: [
-        ...s.anims.filter((a) => !result.anims.some((n) => n.partId === a.partId)),
-        ...result.anims.map((a) => ({ ...a, start: now, duration: DURATION[a.kind] })),
-      ],
-    }));
-    return true;
   },
 
   highlight: (partId) => {
@@ -123,4 +193,5 @@ export const useForge = create<ForgeState>((set, get) => ({
   },
 
   endAnim: (partId) => set((s) => ({ anims: s.anims.filter((a) => a.partId !== partId) })),
-}));
+};
+});

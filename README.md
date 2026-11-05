@@ -33,7 +33,7 @@ src/
 1. **App shell + 3D board** (done)
 2. **Command engine + pick-and-place animations** (done): move, flip, swap, recolor, blink rate, remove
 3. **Suggestion chips, buttons, netlist, undo** (done): power LED, reset button, monostable mode, clickable 3D buttons, Circuit tab with parts and netlist, search, notifications, Ctrl/Cmd+Z
-4. Forge AI: optional local LLM (Ollama) for free-form prompts
+4. **Forge AI picker** (done): built-in parser or a local LLM through Ollama
 5. Lessons, Lab and Components pages
 
 ## Things you can type
@@ -52,3 +52,17 @@ src/
 | `undo` (or Ctrl/Cmd+Z) | rolls back the last change |
 
 Each change adds a card to the History timeline.
+
+## Using a local model (optional)
+
+The **Forge AI ▾** picker next to the send button switches between:
+
+- **Forge AI · built-in**: instant and offline. It understands the phrases listed above.
+- **Local model · Ollama**: write requests in your own words, e.g. *"the LED resistor is in the way, shift it right and make the light blue"*. The model turns the request into commands from the table above, and each one runs with its own animation and History card.
+
+```bash
+ollama pull llama3.2    # or any chat model
+ollama serve            # listens on localhost:11434
+```
+
+In `npm run dev` the app reaches Ollama through the dev server at `/ollama`, so no CORS setup is needed. For a production build, set the URL to `http://localhost:11434` in the picker and start Ollama with `OLLAMA_ORIGINS=*`. Click **Test** to list your installed models. If the model can't be reached, the prompt falls back to the built-in parser. Your choice is saved in the browser.

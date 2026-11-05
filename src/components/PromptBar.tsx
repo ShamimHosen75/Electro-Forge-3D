@@ -1,4 +1,5 @@
-import { ArrowUp, ChevronDown, Loader2, Sparkles } from 'lucide-react';
+import { ArrowUp, Loader2, Sparkles } from 'lucide-react';
+import { ModelPicker } from './ModelPicker';
 import { useState } from 'react';
 import { useForge } from '../store/useForge';
 
@@ -8,6 +9,7 @@ export function PromptBar() {
   const [text, setText] = useState('');
   const run = useForge((s) => s.submit);
   const thinking = useForge((s) => s.thinking);
+  const engine = useForge((s) => s.engine);
   const ready = text.trim().length > 0 && !thinking;
 
   const submit = async (value: string) => {
@@ -48,14 +50,9 @@ export function PromptBar() {
           aria-label="Ask AI to modify your circuit"
           onChange={(e) => setText(e.target.value)}
           className="min-w-0 flex-1 bg-transparent px-1 text-[21px] text-ink placeholder:text-muted/80 focus:outline-none"
-          placeholder={thinking ? 'Forge AI is rewiring your board…' : 'Ask AI to modify your circuit — e.g. “make it blink twice as fast”'}
+          placeholder={thinking ? engine === 'ollama' ? 'Your local model is thinking…' : 'Forge AI is rewiring your board…' : 'Ask AI to modify your circuit — e.g. “make it blink twice as fast”'}
         />
-        <button
-          type="button"
-          className="flex h-11 shrink-0 items-center gap-2 rounded-xl border border-line bg-card px-3.5 font-display text-[14px] font-semibold uppercase tracking-[0.08em] text-ink/75"
-        >
-          Forge AI <ChevronDown className="h-4 w-4" />
-        </button>
+        <ModelPicker />
         <button
           type="submit"
           aria-label="Send"
