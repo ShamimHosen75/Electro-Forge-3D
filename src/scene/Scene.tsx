@@ -3,6 +3,7 @@ import { ContactShadows, Environment, Lightformer } from '@react-three/drei';
 import { useForge } from '../store/useForge';
 import { blinkStats } from '../circuit/values';
 import type { Part } from '../circuit/types';
+import { ledPowered } from '../circuit/netlist';
 import { Breadboard } from './Breadboard';
 import { CameraRig, HOME_POS } from './CameraRig';
 import { Resistor } from './parts/Resistor';
@@ -13,17 +14,20 @@ import { Chip555 } from './parts/Chip555';
 import { WireJumper } from './parts/WireJumper';
 import { Animated } from './Animated';
 import { Button } from './parts/Button';
+import { DragLayer, Pickable, SelectionRing } from './Interaction';
 
 type Blink = { freq: number; duty: number; brightness: number; reversedCap: boolean };
 
 /** The 555 output (pin 3) as seen by the blink LED. */
 const outputSignal = (blink: Blink) => (t: number) => {
   const s = useForge.getState();
-  if (s.pressed.SW1) return 0; // reset held
+  if (s.circuit.parts.some((p) => p.role === 'reset' && s.pressed[p.id])) return 0; // reset held
   if (s.circuit.mode === 'monostable') return performance.now() / 1000 < s.pulseUntil ? 1 : 0;
   if (blink.freq <= 0) return 1;
   return (t * blink.freq) % 1 < blink.duty ? 1 : 0;
 };
+
+const steadySignal = (id: string) => () => (ledPowered(useForge.getState().circuit, id) ? 1 : 0);
 
 function PartView({ part, blink }: { part: Part; blink: Blink }) {
   switch (part.kind) {
@@ -31,7 +35,14 @@ function PartView({ part, blink }: { part: Part; blink: Blink }) {
       return <Resistor part={part} />;
     case 'led':
       // Only the timer output LED blinks; any other LED is steady.
-      return <Led part={part} signal={part.id === 'D1' ? outputSignal(blink) : undefined} brightness={part.id === 'D1' ? blink.brightness : 1} />;
+      // The timer's LED blinks; any other LED lights only when it's wired across the supply.
+      return (
+        <Led
+          part={part}
+          signal={part.id === 'D1' ? outputSignal(blink) : steadySignal(part.id)}
+          brightness={part.id === 'D1' ? blink.brightness : 1}
+        />
+      );
     case 'electrolytic':
       return <Electrolytic part={part} />;
     case 'ceramic':
@@ -56,10 +67,21 @@ function Circuit3D() {
   const removed = anims.filter((a) => a.kind === 'remove' && a.ghost && !circuit.parts.some((p) => p.id === a.partId));
   return (
     <group>
-      <Breadboard />
+      <group
+        onClick={(e) => {
+          // A plain click on the board (not the end of an orbit drag) clears the selection.
+          if (e.delta < 4) useForge.getState().select(null);
+        }}
+      >
+        <Breadboard />
+      </group>
       {circuit.parts.map((p) => (
-        <Animated key={p.id} part={p} anim={anims.find((a) => a.partId === p.id)} render={render} />
+        <Pickable key={p.id} part={p}>
+          <Animated part={p} anim={anims.find((a) => a.partId === p.id)} render={render} />
+        </Pickable>
       ))}
+      <SelectionRing />
+      <DragLayer />
       {removed.map((a) => (
         <Animated key={`gone-${a.partId}-${a.start}`} part={a.ghost!} anim={a} render={render} />
       ))}

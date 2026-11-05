@@ -70,6 +70,14 @@ interface ForgeState {
   ollama: OllamaSettings;
   setAi: (engine: Engine, ollama?: OllamaSettings) => void;
   highlight: (partId: string) => void;
+  /** Part picked in the 3D view, if any. */
+  selected: string | null;
+  select: (partId: string | null) => void;
+  /** A part being dragged across the board (camera orbit is paused meanwhile). */
+  dragging: string | null;
+  setDragging: (partId: string | null) => void;
+  /** Applies a command straight away, with no "thinking" pause. Used by the part editor. */
+  exec: (text: string) => boolean;
   press: (partId: string, down: boolean) => void;
   undo: () => void;
   setTab: (t: PanelTab) => void;
@@ -117,6 +125,17 @@ export const useForge = create<ForgeState>((set, get) => {
   pressed: {},
   pulseUntil: 0,
   page: pageFromHash(),
+  selected: null,
+  select: (selected) => set({ selected }),
+  dragging: null,
+  setDragging: (dragging) => set({ dragging }),
+  exec: (text) => {
+    const ok = apply(text);
+    // Removed parts can't stay selected.
+    const sel = get().selected;
+    if (sel && !get().circuit.parts.some((p) => p.id === sel)) set({ selected: null });
+    return ok;
+  },
   goto: (page) => {
     if (location.hash !== `#/${page}`) location.hash = `/${page}`;
     set({ page });
@@ -198,7 +217,7 @@ export const useForge = create<ForgeState>((set, get) => {
     set((s) => ({ pressed: { ...s.pressed, [partId]: down } }));
     const { circuit } = get();
     // The trigger button fires one monostable pulse: t = 1.1 · R · C.
-    if (down && partId === 'SW2' && circuit.mode === 'monostable') {
+    if (down && circuit.parts.find((p) => p.id === partId)?.role === 'trigger' && circuit.mode === 'monostable') {
       const r = (circuit.parts.find((p) => p.id === 'R1')?.value ?? 0) + (circuit.parts.find((p) => p.id === 'R2')?.value ?? 0);
       const cap = circuit.parts.find((p) => p.id === 'C1')?.value ?? 0;
       set({ pulseUntil: performance.now() / 1000 + 1.1 * r * cap });
@@ -212,7 +231,13 @@ export const useForge = create<ForgeState>((set, get) => {
       return;
     }
     const undone = get().history[0];
-    set((s) => ({ circuit: last.circuit, history: last.history, past: s.past.slice(0, -1), anims: [] }));
+    set((s) => ({
+      circuit: last.circuit,
+      history: last.history,
+      past: s.past.slice(0, -1),
+      anims: [],
+      selected: last.circuit.parts.some((p) => p.id === s.selected) ? s.selected : null,
+    }));
     get().showToast(`Undid “${undone?.title ?? 'last change'}”.`);
   },
 

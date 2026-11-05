@@ -1,4 +1,4 @@
-import { holeLabel, holePos, isValidHole } from './board';
+import { holeLabel, holePos, isValidHole, netKey } from './board';
 import type { Chip, Circuit, HistoryEntry, HoleId, LedColor, Part, PartKind } from './types';
 import { LED_COLORS, blinkStats, capitalize, formatFarads, formatHz, formatOhms, formatValue } from './values';
 
@@ -395,7 +395,7 @@ function needFree(c: Circuit, holes: HoleId[], what: string): string | null {
 }
 
 function cmdAddPowerLed(c: Circuit): CommandResult {
-  if (c.parts.some((p) => p.kind === 'led' && p.id !== 'D1')) return fail('There is already a power LED on the board.');
+  if (c.parts.some((p) => p.pins.includes('FP25'))) return fail('There is already a power LED on the board.');
   const R = nextId(c, 'R');
   const D = nextId(c, 'D');
   const W = nextId(c, 'W');
@@ -421,13 +421,14 @@ function cmdAddPowerLed(c: Circuit): CommandResult {
 }
 
 function cmdAddReset(c: Circuit): CommandResult {
-  if (c.parts.some((p) => p.id === 'SW1')) return fail('The reset button is already on the board.');
+  if (c.parts.some((p) => p.role === 'reset')) return fail('The reset button is already on the board.');
+  const SW = nextId(c, 'SW');
   const tie = c.wires.find((w) => [w.from, w.to].includes('a13'));
   const holes = ['d13', 'd15', 'a15', 'FN15', ...(tie ? [] : ['a13', 'FP13'])];
   const busy = needFree({ ...c, wires: c.wires.filter((w) => w !== tie) }, holes, 'a reset button');
   if (busy) return fail(busy);
   const R = nextId(c, 'R');
-  const sw: Part = { id: 'SW1', kind: 'button', pins: ['d13', 'd15'] };
+  const sw: Part = { id: SW, kind: 'button', role: 'reset', pins: ['d13', 'd15'] };
   // The hard tie from RESET to + becomes a pull-up, so pressing the button can pull RESET low.
   const pullUp: Part = { id: R, kind: 'resistor', value: 10e3, pins: ['FP13', 'a13'] };
   return {
@@ -440,11 +441,11 @@ function cmdAddReset(c: Circuit): CommandResult {
     entry: {
       type: 'added',
       title: 'Added a reset button',
-      chips: [chipFor(sw, 'SW1 · reset'), chipFor(pullUp, `${R} · 10 kΩ pull-up`)],
+      chips: [chipFor(sw, `${SW} · reset`), chipFor(pullUp, `${R} · 10 kΩ pull-up`)],
       description: 'Hold the button on the board to stop the timer. Click it in 3D to try.',
     },
     anims: [
-      { partId: 'SW1', kind: 'add' },
+      { partId: SW, kind: 'add' },
       { partId: R, kind: 'add' },
     ],
   };
@@ -457,7 +458,8 @@ function cmdMonostable(c: Circuit): CommandResult {
   const busy = needFree({ ...c, wires: c.wires.filter((w) => w !== link) }, holes, 'a trigger button');
   if (busy) return fail(busy);
   const R = nextId(c, 'R');
-  const sw: Part = { id: 'SW2', kind: 'button', pins: ['c11', 'c9'] };
+  const SW = nextId(c, 'SW');
+  const sw: Part = { id: SW, kind: 'button', role: 'trigger', pins: ['c11', 'c9'] };
   const pullUp: Part = { id: R, kind: 'resistor', value: 10e3, pins: ['FP11', 'a11'] };
   const next: Circuit = {
     ...c,
@@ -473,11 +475,11 @@ function cmdMonostable(c: Circuit): CommandResult {
       type: 'modified',
       title: 'Made it a monostable',
       diff: { from: 'Astable', to: 'Monostable' },
-      chips: [chipFor(sw, 'SW2 · trigger'), chipFor(pullUp, `${R} · 10 kΩ pull-up`)],
+      chips: [chipFor(sw, `${SW} · trigger`), chipFor(pullUp, `${R} · 10 kΩ pull-up`)],
       description: `Cut the THR–TRIG link and added a trigger button. One press lights the LED for ${(1.1 * (r1 + r2) * cap).toFixed(1)} s.`,
     },
     anims: [
-      { partId: 'SW2', kind: 'add' },
+      { partId: SW, kind: 'add' },
       { partId: R, kind: 'add' },
     ],
   };
@@ -485,7 +487,7 @@ function cmdMonostable(c: Circuit): CommandResult {
 
 function cmdAstable(c: Circuit): CommandResult {
   if (c.mode === 'astable') return fail("It's already blinking on its own (astable).");
-  const sw = c.parts.find((p) => p.id === 'SW2');
+  const sw = c.parts.find((p) => p.role === 'trigger');
   const pull = c.parts.find((p) => p.kind === 'resistor' && p.pins.includes('FP11'));
   const busy = needFree({ ...c, parts: c.parts.filter((p) => p !== sw && p !== pull) }, ['g12', 'd11'], 'the THR–TRIG link');
   if (busy) return fail(busy);
@@ -507,6 +509,140 @@ function cmdAstable(c: Circuit): CommandResult {
   };
 }
 
+/* ---------- adding single parts ---------- */
+
+/** Leg offsets [columns, rows] from the anchor hole, and defaults, per part type. */
+const FOOTPRINT: Record<Exclude<PartKind, 'ic555'>, { legs: [number, number][]; prefix: string; value?: number }> = {
+  resistor: { legs: [[0, 0], [4, 0]], prefix: 'R', value: 1e3 },
+  led: { legs: [[0, 0], [1, 0]], prefix: 'D' },
+  electrolytic: { legs: [[0, 0], [1, 0]], prefix: 'C', value: 10e-6 },
+  ceramic: { legs: [[0, 0], [1, 0]], prefix: 'C', value: 100e-9 },
+  button: { legs: [[0, 0], [2, 0]], prefix: 'SW' },
+};
+
+const ROWS_ALL = 'abcdefghij';
+
+function footprintAt(kind: keyof typeof FOOTPRINT, anchor: HoleId): HoleId[] | null {
+  const m = /^([a-j])(\d{1,2})$/.exec(anchor);
+  if (!m) return null;
+  const r0 = ROWS_ALL.indexOf(m[1]);
+  const c0 = Number(m[2]);
+  const pins: HoleId[] = [];
+  for (const [dc, dr] of FOOTPRINT[kind].legs) {
+    const r = r0 + dr;
+    const id = `${ROWS_ALL[r]}${c0 + dc}`;
+    if (r < 0 || r > 9 || !isValidHole(id)) return null;
+    pins.push(id);
+  }
+  return pins;
+}
+
+/** First spot where every leg lands in a free hole, scanning the rows people usually use first. */
+function findFreeSpot(c: Circuit, kind: keyof typeof FOOTPRINT): HoleId[] | null {
+  const used = usedHoles(c);
+  const usedStrips = new Set([...used].map(netKey));
+  // First try strips nothing else touches, so the new part isn't accidentally wired in.
+  for (const strict of [true, false]) {
+    for (const row of 'cbdahgif') {
+      for (let col = 2; col <= 29; col++) {
+        const pins = footprintAt(kind, `${row}${col}`);
+        if (!pins || pins.some((h) => used.has(h))) continue;
+        if (strict && pins.some((h) => usedStrips.has(netKey(h)))) continue;
+        return pins;
+      }
+    }
+  }
+  return null;
+}
+
+function cmdAddPart(text: string, c: Circuit): CommandResult {
+  const t = text.toLowerCase();
+  let kind: keyof typeof FOOTPRINT | null = null;
+  if (/\bresistors?\b/.test(t)) kind = 'resistor';
+  else if (/\bleds?\b|\blight\b/.test(t)) kind = 'led';
+  else if (/\bceramic\b|\bdecoupling\b|\bdisc\b/.test(t)) kind = 'ceramic';
+  else if (/\bcap(?:acitor)?s?\b|\belectrolytic\b/.test(t)) kind = 'electrolytic';
+  else if (/\bbutton\b|\bswitch\b/.test(t)) kind = 'button';
+  if (!kind) return fail('Which part? I can add a resistor, LED, capacitor, ceramic capacitor or button.');
+
+  const fp = FOOTPRINT[kind];
+  const at = findHoles(text.replace(/^.*?\b(at|in|on)\b/i, ''))[0];
+  let pins: HoleId[] | null;
+  if (at && /\b(at|in|on)\b/i.test(text)) {
+    pins = footprintAt(kind, at);
+    if (!pins) return fail(`A ${KIND_NAME[kind]} doesn't fit at ${holeLabel(at)}.`);
+    const busy = needFree(c, pins, `the ${KIND_NAME[kind]}`);
+    if (busy) return fail(busy);
+  } else {
+    pins = findFreeSpot(c, kind);
+    if (!pins) return fail(`There's no free spot left for a ${KIND_NAME[kind]}.`);
+  }
+
+  const id = nextId(c, fp.prefix);
+  const part: Part = { id, kind, pins };
+  if (kind === 'resistor') part.value = parseValue(text, 'ohm') ?? fp.value;
+  if (kind === 'electrolytic' || kind === 'ceramic') part.value = parseValue(text, 'farad') ?? fp.value;
+  if (kind === 'led') part.color = findColor(t) ?? 'red';
+
+  return {
+    ok: true,
+    circuit: { ...c, parts: [...c.parts, part] },
+    entry: {
+      type: 'added',
+      title: `Added a ${kind === 'led' ? `${part.color} LED` : KIND_NAME[kind]}`,
+      chips: [chipFor(part, `${id} · ${kind === 'led' ? capitalize(part.color!) : formatValue(part)}`)],
+      description: `Placed ${id} at ${pins.map(holeLabel).join(' → ')}. Drag it or use the part editor to change it.`,
+    },
+    anims: [{ partId: id, kind: 'add' }],
+  };
+}
+
+/* ---------- jumper wires ---------- */
+
+function cmdWire(text: string, c: Circuit): CommandResult {
+  const holes = findHoles(text);
+  if (holes.length < 2) return fail('Give both ends, e.g. "wire a5 to FN5".');
+  const [from, to] = holes;
+  for (const h of [from, to]) if (!isValidHole(h)) return fail(`${holeLabel(h)} isn't a hole on this board.`);
+  if (netKey(from) === netKey(to)) return fail(`${holeLabel(from)} and ${holeLabel(to)} are already connected by the board.`);
+  const busy = needFree(c, [from, to], 'a wire');
+  if (busy) return fail(busy);
+  const toRail = [from, to].find((h) => /^(FP|BP|FN|BN)/.test(h));
+  const color = !toRail ? '#2f62c8' : /^(FP|BP)/.test(toRail) ? '#d63a2f' : '#2a2a2e';
+  const id = nextId(c, 'W');
+  return {
+    ok: true,
+    circuit: { ...c, wires: [...c.wires, { id, from, to, color }] },
+    entry: {
+      type: 'rewired',
+      title: 'Added a jumper wire',
+      chips: [{ icon: 'wire', text: `${id} · ${holeLabel(from)} → ${holeLabel(to)}` }],
+      description: `Linked ${holeLabel(from)} to ${holeLabel(to)}.`,
+    },
+    anims: [],
+  };
+}
+
+function cmdRemoveWire(text: string, c: Circuit): CommandResult {
+  const idm = /\bw(\d{1,2})\b/i.exec(text);
+  const holes = findHoles(text);
+  const wire = idm
+    ? c.wires.find((w) => w.id === `W${idm[1]}`)
+    : c.wires.find((w) => holes.some((h) => w.from === h || w.to === h));
+  if (!wire) return fail(holes.length || idm ? "I couldn't find that wire." : 'Which wire? Give its id (W3) or a hole it plugs into.');
+  return {
+    ok: true,
+    circuit: { ...c, wires: c.wires.filter((w) => w !== wire) },
+    entry: {
+      type: 'removed',
+      title: 'Removed a jumper wire',
+      chips: [{ icon: 'wire', text: `${wire.id} · ${holeLabel(wire.from)} → ${holeLabel(wire.to)}` }],
+      description: `Unplugged the wire between ${holeLabel(wire.from)} and ${holeLabel(wire.to)}.`,
+    },
+    anims: [],
+  };
+}
+
 /* ---------- entry point ---------- */
 
 export function runCommand(input: string, c: Circuit): CommandResult {
@@ -518,6 +654,9 @@ export function runCommand(input: string, c: Circuit): CommandResult {
   if (/\breset\b/.test(t) && /\b(add|button|switch)\b/.test(t)) return cmdAddReset(c);
   if (/\bmono-?stable\b|\bone-?shot\b/.test(t)) return cmdMonostable(c);
   if (/\ba-?stable\b|\bfree-?run/.test(t)) return cmdAstable(c);
+  if (/\b(wire|jumper)s?\b/.test(t) && /\b(remove|delete|unplug|pull)\b/.test(t)) return cmdRemoveWire(text, c);
+  if (/\b(wire|jumper|connect|link)\b/.test(t)) return cmdWire(text, c);
+  if (/\b(add|place|insert)\b/.test(t)) return cmdAddPart(text, c);
   if (/\b(flip|reverse|turn around|rotate)\b/.test(t)) return cmdFlip(text, c);
   if (/\b(blink|rate|frequency|hz|faster|slower|speed)\b/.test(t)) return cmdRate(text, c);
   if (/\b(move|reposition|shift|relocate|put)\b/.test(t)) return cmdMove(text, c);

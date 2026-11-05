@@ -9,7 +9,10 @@ import { Leg, SINK, TwoPin } from './common';
 export function Button({ part }: { part: Part }) {
   const press = useForge((s) => s.press);
   const cap = useRef<THREE.Mesh>(null);
-  const down = () => press(part.id, true);
+  const down = () => {
+    press(part.id, true);
+    useForge.getState().select(part.id);
+  };
   const up = () => {
     if (useForge.getState().pressed[part.id]) press(part.id, false);
     document.body.style.cursor = '';
@@ -42,7 +45,7 @@ export function Button({ part }: { part: Part }) {
           </mesh>
           <mesh ref={cap} position={[0, 0.22, 0]} castShadow>
             <cylinderGeometry args={[0.12, 0.12, 0.12, 24]} />
-            <meshStandardMaterial color={part.id === 'SW2' ? '#e3b52a' : '#d6453a'} roughness={0.4} />
+            <meshStandardMaterial color={part.role === 'trigger' ? '#e3b52a' : part.role === 'reset' ? '#d6453a' : '#3a6fd1'} roughness={0.4} />
           </mesh>
         </group>
       )}

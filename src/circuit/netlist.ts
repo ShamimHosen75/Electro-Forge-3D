@@ -42,3 +42,32 @@ export function buildNetlist(c: Circuit): Net[] {
   const rank = (n: Net) => (n.name === 'VCC' ? 0 : n.name === 'GND' ? 1 : n.name.startsWith('N') ? 3 : 2);
   return nets.sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
 }
+
+/**
+ * Whether an LED has a path for current: anode reaches + (a rail or the 555
+ * output) and cathode reaches − (a rail), counting resistors and jumpers as links.
+ */
+export function ledPowered(c: Circuit, ledId: string): boolean {
+  const led = c.parts.find((p) => p.id === ledId);
+  if (!led || led.kind !== 'led' || led.reversed) return false;
+  const parent = new Map<string, string>();
+  const find = (k: string): string => {
+    if (!parent.has(k)) parent.set(k, k);
+    const p = parent.get(k)!;
+    if (p === k) return k;
+    const r = find(p);
+    parent.set(k, r);
+    return r;
+  };
+  const join = (a: string, b: string) => parent.set(find(a), find(b));
+  join('FP', 'BP');
+  join('FN', 'BN');
+  for (const w of c.wires) join(netKey(w.from), netKey(w.to));
+  for (const p of c.parts) if (p.kind === 'resistor') join(netKey(p.pins[0]), netKey(p.pins[1]));
+  const anode = find(netKey(led.pins[0]));
+  const cathode = find(netKey(led.pins[1]));
+  if (anode === cathode) return false; // shorted out
+  const chip = c.parts.find((p) => p.kind === 'ic555');
+  const sources = [find('FP'), ...(chip ? [find(netKey(chip.pins[2]))] : [])];
+  return sources.includes(anode) && cathode === find('FN');
+}

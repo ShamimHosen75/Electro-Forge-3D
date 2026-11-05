@@ -69,3 +69,11 @@ ollama serve            # listens on localhost:11434
 ```
 
 In `npm run dev` the app reaches Ollama through the dev server at `/ollama`, so no CORS setup is needed. For a production build, set the URL to `http://localhost:11434` in the picker and start Ollama with `OLLAMA_ORIGINS=*`. Click **Test** to list your installed models. If the model can't be reached, the prompt falls back to the built-in parser. Your choice is saved in the browser.
+
+## Editing the board directly
+
+- **Select:** click any part. A dashed ring marks it and the part editor opens at the top right.
+- **Edit:** set a resistor or capacitor value (type it or pick a common one), change an LED's colour, flip polarised parts, or delete a part.
+- **Move:** drag the part to new holes. Green rings show where it will land and red means the spot is taken. You can also type a hole into **Move**, use the arrow buttons, or press the arrow keys. **Del** removes the part and **Esc** deselects it.
+- **Add:** the **+** button at the top of the left toolbar adds a resistor, LED, capacitor or push button on a free spot. You can also type `add a 4.7k resistor at h20` or `add a blue led`.
+- **Wire:** type `wire b22 to FP22` to add a jumper and `remove wire at b22` to take one out. An added LED only lights once it has a path from + (through a resistor) to −.

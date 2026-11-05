@@ -14,6 +14,7 @@ export function CameraRig() {
   const controls = useRef<OrbitControlsImpl>(null);
   const { camera } = useThree();
   const view = useForge((s) => s.view);
+  const dragging = useForge((s) => s.dragging);
   const goal = useRef<{ pos: THREE.Vector3; target: THREE.Vector3 } | null>(null);
 
   useEffect(() => {
@@ -52,6 +53,7 @@ export function CameraRig() {
     <OrbitControls
       ref={controls}
       makeDefault
+      enabled={!dragging}
       target={HOME_TARGET}
       enableDamping
       dampingFactor={0.08}

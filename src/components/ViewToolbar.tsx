@@ -1,6 +1,7 @@
 import { Box, Maximize, RotateCcw, ZoomIn, ZoomOut } from 'lucide-react';
 import { useState } from 'react';
 import { useForge, type ViewCommand } from '../store/useForge';
+import { AddPartMenu } from './AddPartMenu';
 
 export function ViewToolbar() {
   const sendView = useForge((s) => s.sendView);
@@ -14,6 +15,8 @@ export function ViewToolbar() {
   ];
   return (
     <div className="panel absolute left-[35px] top-1/2 z-10 flex -translate-y-1/2 flex-col gap-1 p-1.5">
+      <AddPartMenu />
+      <span className="mx-1.5 my-0.5 h-px bg-line" />
       {items.map(({ icon: Icon, label, cmd }) => (
         <button
           key={label}

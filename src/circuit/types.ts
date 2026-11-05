@@ -14,6 +14,8 @@ export interface Part {
   pins: HoleId[];
   /** Polarised parts turned the wrong way round. */
   reversed?: boolean;
+  /** What a push button is wired to do. */
+  role?: 'reset' | 'trigger';
 }
 
 export interface Wire {
