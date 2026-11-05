@@ -14,7 +14,16 @@ import { WireJumper } from './parts/WireJumper';
 import { Animated } from './Animated';
 import { Button } from './parts/Button';
 
-type Blink = { freq: number; duty: number; brightness: number };
+type Blink = { freq: number; duty: number; brightness: number; reversedCap: boolean };
+
+/** The 555 output (pin 3) as seen by the blink LED. */
+const outputSignal = (blink: Blink) => (t: number) => {
+  const s = useForge.getState();
+  if (s.pressed.SW1) return 0; // reset held
+  if (s.circuit.mode === 'monostable') return performance.now() / 1000 < s.pulseUntil ? 1 : 0;
+  if (blink.freq <= 0) return 1;
+  return (t * blink.freq) % 1 < blink.duty ? 1 : 0;
+};
 
 function PartView({ part, blink }: { part: Part; blink: Blink }) {
   switch (part.kind) {
@@ -22,7 +31,7 @@ function PartView({ part, blink }: { part: Part; blink: Blink }) {
       return <Resistor part={part} />;
     case 'led':
       // Only the timer output LED blinks; any other LED is steady.
-      return <Led part={part} blink={part.id === 'D1' ? blink : undefined} brightness={part.id === 'D1' ? blink.brightness : 1} />;
+      return <Led part={part} signal={part.id === 'D1' ? outputSignal(blink) : undefined} brightness={part.id === 'D1' ? blink.brightness : 1} />;
     case 'electrolytic':
       return <Electrolytic part={part} />;
     case 'ceramic':
@@ -41,7 +50,8 @@ function Circuit3D() {
   // A bigger LED resistor means less current and a dimmer LED.
   const r3 = circuit.parts.find((p) => p.id === 'R3')?.value ?? 220;
   const brightness = Math.min(1.3, Math.max(0.3, Math.sqrt(220 / r3)));
-  const blink = { freq: circuit.mode === 'astable' ? freq : 0, duty, brightness };
+  const reversedCap = !!circuit.parts.find((p) => p.id === 'C1')?.reversed;
+  const blink = { freq: circuit.mode === 'astable' ? freq : 0, duty, brightness, reversedCap };
   const render = (p: Part) => <PartView part={p} blink={blink} />;
   const removed = anims.filter((a) => a.kind === 'remove' && a.ghost && !circuit.parts.some((p) => p.id === a.partId));
   return (

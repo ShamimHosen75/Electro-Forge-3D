@@ -28,6 +28,15 @@ interface ForgeState {
   toast: { text: string; tone: 'info' | 'error'; nonce: number } | null;
   thinking: boolean;
   anims: ActiveAnim[];
+  /** Snapshots for undo, newest last. */
+  past: { circuit: Circuit; history: HistoryEntry[] }[];
+  /** Buttons currently held down in the 3D view. */
+  pressed: Record<string, boolean>;
+  /** Monostable output stays high until this time (performance.now seconds). */
+  pulseUntil: number;
+  highlight: (partId: string) => void;
+  press: (partId: string, down: boolean) => void;
+  undo: () => void;
   setTab: (t: PanelTab) => void;
   sendView: (cmd: ViewCommand) => void;
   showToast: (text: string, tone?: 'info' | 'error') => void;
@@ -46,12 +55,19 @@ export const useForge = create<ForgeState>((set, get) => ({
   toast: null,
   thinking: false,
   anims: [],
+  past: [],
+  pressed: {},
+  pulseUntil: 0,
   setTab: (tab) => set({ tab }),
   sendView: (cmd) => set({ view: { cmd, nonce: Date.now() + Math.random() } }),
   showToast: (text, tone = 'info') => set({ toast: { text, tone, nonce: Date.now() } }),
 
   submit: async (text) => {
     if (get().thinking) return false;
+    if (/^\s*undo\b/i.test(text)) {
+      get().undo();
+      return true;
+    }
     set({ thinking: true });
     // A short beat so the change reads as "the AI worked on it" rather than a snap.
     await wait(650);
@@ -65,6 +81,7 @@ export const useForge = create<ForgeState>((set, get) => ({
     const entry: HistoryEntry = { ...result.entry, id: `h${++seq}`, at: Date.now() };
     set((s) => ({
       thinking: false,
+      past: [...s.past.slice(-30), { circuit: s.circuit, history: s.history }],
       circuit: result.circuit,
       history: [entry, ...s.history],
       tab: 'history',
@@ -74,6 +91,35 @@ export const useForge = create<ForgeState>((set, get) => ({
       ],
     }));
     return true;
+  },
+
+  highlight: (partId) => {
+    const now = performance.now() / 1000;
+    set((s) => ({
+      anims: [...s.anims.filter((a) => a.partId !== partId), { partId, kind: 'pulse', start: now, duration: DURATION.pulse }],
+    }));
+  },
+
+  press: (partId, down) => {
+    set((s) => ({ pressed: { ...s.pressed, [partId]: down } }));
+    const { circuit } = get();
+    // The trigger button fires one monostable pulse: t = 1.1 · R · C.
+    if (down && partId === 'SW2' && circuit.mode === 'monostable') {
+      const r = (circuit.parts.find((p) => p.id === 'R1')?.value ?? 0) + (circuit.parts.find((p) => p.id === 'R2')?.value ?? 0);
+      const cap = circuit.parts.find((p) => p.id === 'C1')?.value ?? 0;
+      set({ pulseUntil: performance.now() / 1000 + 1.1 * r * cap });
+    }
+  },
+
+  undo: () => {
+    const last = get().past[get().past.length - 1];
+    if (!last) {
+      get().showToast('Nothing to undo yet.', 'error');
+      return;
+    }
+    const undone = get().history[0];
+    set((s) => ({ circuit: last.circuit, history: last.history, past: s.past.slice(0, -1), anims: [] }));
+    get().showToast(`Undid “${undone?.title ?? 'last change'}”.`);
   },
 
   endAnim: (partId) => set((s) => ({ anims: s.anims.filter((a) => a.partId !== partId) })),

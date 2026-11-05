@@ -3,14 +3,21 @@ import { useForge } from '../store/useForge';
 import { blinkStats, formatHz, formatValue } from '../circuit/values';
 import { holeLabel } from '../circuit/board';
 import { PartIcon } from './PartIcon';
+import { buildNetlist } from '../circuit/netlist';
 
 export function CircuitTab() {
   const circuit = useForge((s) => s.circuit);
-  const { freq, duty } = blinkStats(circuit);
+  const highlight = useForge((s) => s.highlight);
+  const { freq, duty, r1, r2, cap } = blinkStats(circuit);
+  const nets = buildNetlist(circuit);
   const stats = [
     { icon: Activity, label: 'Blink rate', value: circuit.mode === 'astable' ? formatHz(freq) : 'one-shot' },
-    { icon: Timer, label: 'Period', value: circuit.mode === 'astable' ? `${(1 / freq).toFixed(2)} s` : '—' },
-    { icon: Gauge, label: 'Duty cycle', value: `${Math.round(duty * 100)} %` },
+    {
+      icon: Timer,
+      label: circuit.mode === 'astable' ? 'Period' : 'Pulse',
+      value: circuit.mode === 'astable' ? `${(1 / freq).toFixed(2)} s` : `${(1.1 * (r1 + r2) * cap).toFixed(2)} s`,
+    },
+    { icon: Gauge, label: 'Duty cycle', value: circuit.mode === 'astable' ? `${Math.round(duty * 100)} %` : '—' },
   ];
   return (
     <div className="thin-scroll min-h-0 flex-1 overflow-y-auto px-5 pb-6 pt-5">
@@ -28,7 +35,12 @@ export function CircuitTab() {
       <h4 className="label-caps mb-2.5 mt-6 text-[13px] text-ink/75">Parts · {circuit.parts.length}</h4>
       <ul className="overflow-hidden rounded-xl border border-line/80 bg-card">
         {circuit.parts.map((p) => (
-          <li key={p.id} className="flex items-center gap-3 border-b border-line/60 px-4 py-2.5 last:border-0">
+          <li
+            key={p.id}
+            onClick={() => highlight(p.id)}
+            title="Show on the board"
+            className="flex cursor-pointer items-center gap-3 border-b border-line/60 px-4 py-2.5 transition last:border-0 hover:bg-white/60"
+          >
             <span className="grid h-8 w-8 place-items-center rounded-lg border border-line bg-white/60 text-ink/70">
               <PartIcon icon={p.kind} />
             </span>
@@ -40,6 +52,22 @@ export function CircuitTab() {
             <span className="font-mono text-[12px] text-muted">
               {p.kind === 'ic555' ? `${holeLabel(p.pins[0])}…` : p.pins.map(holeLabel).join(' · ')}
             </span>
+          </li>
+        ))}
+      </ul>
+
+      <h4 className="label-caps mb-2.5 mt-6 text-[13px] text-ink/75">Netlist · {nets.length}</h4>
+      <ul className="overflow-hidden rounded-xl border border-line/80 bg-card">
+        {nets.map((n) => (
+          <li key={n.name + n.members[0]} className="flex gap-3 border-b border-line/60 px-4 py-2 last:border-0">
+            <span
+              className={`w-14 shrink-0 font-display text-[14px] font-bold ${
+                n.name === 'VCC' ? 'text-forge' : n.name === 'GND' ? 'text-wire' : 'text-ink/80'
+              }`}
+            >
+              {n.name}
+            </span>
+            <span className="font-mono text-[12px] leading-5 text-ink/70">{n.members.join('  ')}</span>
           </li>
         ))}
       </ul>

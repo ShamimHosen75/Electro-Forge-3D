@@ -32,7 +32,7 @@ src/
 
 1. **App shell + 3D board** (done)
 2. **Command engine + pick-and-place animations** (done): move, flip, swap, recolor, blink rate, remove
-3. Working suggestion chips, Circuit tab netlist, search, notifications, undo
+3. **Suggestion chips, buttons, netlist, undo** (done): power LED, reset button, monostable mode, clickable 3D buttons, Circuit tab with parts and netlist, search, notifications, Ctrl/Cmd+Z
 4. Forge AI: optional local LLM (Ollama) for free-form prompts
 5. Lessons, Lab and Components pages
 
@@ -46,5 +46,9 @@ src/
 | `change led color to green` | the LED is swapped for a green one |
 | `make it blink twice as fast` / `blink at 2 Hz` / `slower` | R2 (or C1) is retuned using f = 1.44 / ((R1 + 2·R2)·C1) |
 | `remove C2` | the part is pulled off the board |
+| `add a power LED` | a green LED and 1 kΩ resistor drop in across the rails |
+| `add a reset button` | SW1 plus a pull-up replace the hard RESET tie. Hold the button in 3D to stop the timer |
+| `make it a monostable` / `make it astable` | cuts or restores the THR–TRIG link. In monostable mode, click the yellow trigger button for one pulse |
+| `undo` (or Ctrl/Cmd+Z) | rolls back the last change |
 
 Each change adds a card to the History timeline.

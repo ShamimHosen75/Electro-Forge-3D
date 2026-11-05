@@ -23,9 +23,9 @@ const BASE_Y = 0.4;
 const LR = 0.15; // lens radius
 
 /**
- * 5 mm LED. `blink` gives the on/off pattern; when it's off the LED stays lit.
+ * 5 mm LED. `signal` returns 1 when current flows; without one the LED stays lit.
  */
-export function Led({ part, blink, brightness = 1 }: { part: Part; blink?: { freq: number; duty: number }; brightness?: number }) {
+export function Led({ part, signal, brightness = 1 }: { part: Part; signal?: (t: number) => number; brightness?: number }) {
   const colors = LED_COLORS[part.color ?? 'red'];
   const bodyMat = useRef<THREE.MeshPhysicalMaterial>(null);
   const domeMat = useRef<THREE.MeshPhysicalMaterial>(null);
@@ -38,11 +38,7 @@ export function Led({ part, blink, brightness = 1 }: { part: Part; blink?: { fre
   const bodyColor = useMemo(() => new THREE.Color(colors.body), [colors.body]);
 
   useFrame(({ clock }, dt) => {
-    let on = 1;
-    if (blink && blink.freq > 0 && !part.reversed) {
-      const phase = (clock.elapsedTime * blink.freq) % 1;
-      on = phase < blink.duty ? 1 : 0;
-    }
+    let on = signal ? signal(clock.elapsedTime) : 1;
     if (part.reversed) on = 0;
     // Ease towards the target so the LED fades a little like a real one.
     level.current += (on - level.current) * Math.min(1, dt * 22);

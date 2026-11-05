@@ -376,6 +376,137 @@ function cmdRemove(text: string, c: Circuit): CommandResult {
   };
 }
 
+/* ---------- builders from the suggestion chips ---------- */
+
+const BLACK = '#2a2a2e';
+const YELLOW = '#e3b52a';
+
+function nextId(c: Circuit, prefix: string) {
+  let n = 1;
+  const ids = new Set([...c.parts.map((p) => p.id), ...c.wires.map((w) => w.id)]);
+  while (ids.has(`${prefix}${n}`)) n++;
+  return `${prefix}${n}`;
+}
+
+function needFree(c: Circuit, holes: HoleId[], what: string): string | null {
+  const used = usedHoles(c);
+  const busy = holes.find((h) => used.has(h));
+  return busy ? `I need ${holeLabel(busy)} free to add ${what}. Move whatever is there first.` : null;
+}
+
+function cmdAddPowerLed(c: Circuit): CommandResult {
+  if (c.parts.some((p) => p.kind === 'led' && p.id !== 'D1')) return fail('There is already a power LED on the board.');
+  const R = nextId(c, 'R');
+  const D = nextId(c, 'D');
+  const W = nextId(c, 'W');
+  const holes = ['FP25', 'a25', 'c25', 'c26', 'a26', 'FN27'];
+  const busy = needFree(c, holes, 'a power LED');
+  if (busy) return fail(busy);
+  const res: Part = { id: R, kind: 'resistor', value: 1e3, pins: ['FP25', 'a25'] };
+  const led: Part = { id: D, kind: 'led', color: 'green', pins: ['c25', 'c26'] };
+  return {
+    ok: true,
+    circuit: { ...c, parts: [...c.parts, res, led], wires: [...c.wires, { id: W, from: 'a26', to: 'FN27', color: BLACK }] },
+    entry: {
+      type: 'added',
+      title: 'Added a power LED',
+      chips: [chipFor(led, `${D} · green`), chipFor(res, `${R} · 1 kΩ`)],
+      description: 'Lights steadily whenever the board has power.',
+    },
+    anims: [
+      { partId: R, kind: 'add' },
+      { partId: D, kind: 'add' },
+    ],
+  };
+}
+
+function cmdAddReset(c: Circuit): CommandResult {
+  if (c.parts.some((p) => p.id === 'SW1')) return fail('The reset button is already on the board.');
+  const tie = c.wires.find((w) => [w.from, w.to].includes('a13'));
+  const holes = ['d13', 'd15', 'a15', 'FN15', ...(tie ? [] : ['a13', 'FP13'])];
+  const busy = needFree({ ...c, wires: c.wires.filter((w) => w !== tie) }, holes, 'a reset button');
+  if (busy) return fail(busy);
+  const R = nextId(c, 'R');
+  const sw: Part = { id: 'SW1', kind: 'button', pins: ['d13', 'd15'] };
+  // The hard tie from RESET to + becomes a pull-up, so pressing the button can pull RESET low.
+  const pullUp: Part = { id: R, kind: 'resistor', value: 10e3, pins: ['FP13', 'a13'] };
+  return {
+    ok: true,
+    circuit: {
+      ...c,
+      parts: [...c.parts, sw, pullUp],
+      wires: [...c.wires.filter((w) => w !== tie), { id: nextId(c, 'W'), from: 'a15', to: 'FN15', color: BLACK }],
+    },
+    entry: {
+      type: 'added',
+      title: 'Added a reset button',
+      chips: [chipFor(sw, 'SW1 · reset'), chipFor(pullUp, `${R} · 10 kΩ pull-up`)],
+      description: 'Hold the button on the board to stop the timer. Click it in 3D to try.',
+    },
+    anims: [
+      { partId: 'SW1', kind: 'add' },
+      { partId: R, kind: 'add' },
+    ],
+  };
+}
+
+function cmdMonostable(c: Circuit): CommandResult {
+  if (c.mode === 'monostable') return fail("It's already a monostable.");
+  const link = c.wires.find((w) => [w.from, w.to].includes('g12') && [w.from, w.to].includes('d11'));
+  const holes = ['c11', 'c9', 'a9', 'FN9', 'FP11', 'a11'];
+  const busy = needFree({ ...c, wires: c.wires.filter((w) => w !== link) }, holes, 'a trigger button');
+  if (busy) return fail(busy);
+  const R = nextId(c, 'R');
+  const sw: Part = { id: 'SW2', kind: 'button', pins: ['c11', 'c9'] };
+  const pullUp: Part = { id: R, kind: 'resistor', value: 10e3, pins: ['FP11', 'a11'] };
+  const next: Circuit = {
+    ...c,
+    mode: 'monostable',
+    parts: [...c.parts, sw, pullUp],
+    wires: [...c.wires.filter((w) => w !== link), { id: nextId(c, 'W'), from: 'a9', to: 'FN9', color: YELLOW }],
+  };
+  const { r1, r2, cap } = blinkStats(next);
+  return {
+    ok: true,
+    circuit: next,
+    entry: {
+      type: 'modified',
+      title: 'Made it a monostable',
+      diff: { from: 'Astable', to: 'Monostable' },
+      chips: [chipFor(sw, 'SW2 · trigger'), chipFor(pullUp, `${R} · 10 kΩ pull-up`)],
+      description: `Cut the THR–TRIG link and added a trigger button. One press lights the LED for ${(1.1 * (r1 + r2) * cap).toFixed(1)} s.`,
+    },
+    anims: [
+      { partId: 'SW2', kind: 'add' },
+      { partId: R, kind: 'add' },
+    ],
+  };
+}
+
+function cmdAstable(c: Circuit): CommandResult {
+  if (c.mode === 'astable') return fail("It's already blinking on its own (astable).");
+  const sw = c.parts.find((p) => p.id === 'SW2');
+  const pull = c.parts.find((p) => p.kind === 'resistor' && p.pins.includes('FP11'));
+  const busy = needFree({ ...c, parts: c.parts.filter((p) => p !== sw && p !== pull) }, ['g12', 'd11'], 'the THR–TRIG link');
+  if (busy) return fail(busy);
+  return {
+    ok: true,
+    circuit: {
+      ...c,
+      mode: 'astable',
+      parts: c.parts.filter((p) => p !== sw && p !== pull),
+      wires: [...c.wires.filter((w) => !(w.from === 'a9' && w.to === 'FN9')), { id: nextId(c, 'W'), from: 'g12', to: 'd11', color: '#2f62c8' }],
+    },
+    entry: {
+      type: 'modified',
+      title: 'Made it an astable again',
+      diff: { from: 'Monostable', to: 'Astable' },
+      description: 'Restored the THR–TRIG link so the 555 free-runs and blinks.',
+    },
+    anims: [sw, pull].filter(Boolean).map((p) => ({ partId: p!.id, kind: 'remove' as const, ghost: p! })),
+  };
+}
+
 /* ---------- entry point ---------- */
 
 export function runCommand(input: string, c: Circuit): CommandResult {
@@ -383,6 +514,10 @@ export function runCommand(input: string, c: Circuit): CommandResult {
   const t = text.toLowerCase();
   if (!t) return fail('Type a change to make.');
 
+  if (/\bpower (led|light|indicator)\b/.test(t)) return cmdAddPowerLed(c);
+  if (/\breset\b/.test(t) && /\b(add|button|switch)\b/.test(t)) return cmdAddReset(c);
+  if (/\bmono-?stable\b|\bone-?shot\b/.test(t)) return cmdMonostable(c);
+  if (/\ba-?stable\b|\bfree-?run/.test(t)) return cmdAstable(c);
   if (/\b(flip|reverse|turn around|rotate)\b/.test(t)) return cmdFlip(text, c);
   if (/\b(blink|rate|frequency|hz|faster|slower|speed)\b/.test(t)) return cmdRate(text, c);
   if (/\b(move|reposition|shift|relocate|put)\b/.test(t)) return cmdMove(text, c);
