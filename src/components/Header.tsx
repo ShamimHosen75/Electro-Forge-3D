@@ -185,7 +185,8 @@ export function Header() {
         </span>
         <span className="leading-none">
           <span className="block font-display text-[30px] font-bold tracking-[0.02em]">
-            <span className="text-forge">ELECTRO</span> FORGE
+            <span className="text-forge">CIRCUIT</span>FORGE
+            <span className="ml-1.5 inline-block -translate-y-[3px] rounded-md bg-forge px-1.5 py-0.5 align-middle text-[14px] leading-none tracking-[0.08em] text-white">AI</span>
           </span>
           <span className="mt-1 flex items-center gap-2 font-display text-[11px] font-semibold uppercase tracking-[0.3em] text-muted">
             <span className="hazard w-[30px] text-forge" />

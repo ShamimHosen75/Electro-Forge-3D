@@ -6,7 +6,7 @@ import { DEFAULT_OLLAMA, translate, type OllamaSettings } from '../ai/ollama';
 
 export type Engine = 'builtin' | 'ollama';
 
-const SETTINGS_KEY = 'ef.ai';
+const SETTINGS_KEY = 'cf.ai';
 function loadAi(): { engine: Engine; ollama: OllamaSettings } {
   try {
     const raw = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? 'null');

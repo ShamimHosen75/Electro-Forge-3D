@@ -37,7 +37,7 @@ export function Chip555({ part }: { part: Part }) {
         ctx.fillText('NE555', cw / 2 + 12, ch / 2 - 8);
         ctx.fillStyle = '#8b8a87';
         ctx.font = `600 36px ${FONT}`;
-        ctx.fillText('EF  2326', cw / 2 + 12, ch / 2 + 62);
+        ctx.fillText('CF  2326', cw / 2 + 12, ch / 2 + 62);
       }),
     [],
   );

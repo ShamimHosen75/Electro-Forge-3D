@@ -10,7 +10,7 @@ const LEVEL_STYLE = {
   Advanced: 'border-forge/40 bg-forge-soft text-forge',
 };
 
-const KEY = 'ef.lessons.done';
+const KEY = 'cf.lessons.done';
 function loadDone(): string[] {
   try {
     return JSON.parse(localStorage.getItem(KEY) ?? '[]');

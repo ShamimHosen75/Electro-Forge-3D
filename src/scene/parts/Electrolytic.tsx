@@ -27,7 +27,7 @@ export function Electrolytic({ part }: { part: Part }) {
         ctx.font = `700 92px ${FONT}`;
         ctx.save();
         ctx.translate(w * 0.25, h * 0.48);
-        ctx.fillText('EF', 0, -40);
+        ctx.fillText('CF', 0, -40);
         ctx.font = `700 120px ${FONT}`;
         ctx.fillText(label, 0, 80);
         ctx.font = `600 54px ${FONT}`;
